@@ -1,13 +1,14 @@
-"""普通二极管正向伏安特性曲线。
+"""图1  普通二极管的正向伏安特性曲线。
 
 数据：实验原始记录，保存在同目录的 data_normal_diode.csv（U 单位 V，I 单位 mA）。
 
 方法：
-1. 蓝色散点 + 浅蓝色平滑曲线（PCHIP 单调三次插值，保证曲线不过冲、不会出负电流）；
-2. 取电流随电压剧烈变化的线性段（U >= 0.680 V）做最小二乘拟合 I = a*U + b；
-3. 由拟合直线的横轴截距得正向导通阈值电压 U_th，在图上以高亮圆点 + 竖虚线标出；
-4. 另出直线段局部放大图，把拟合线与 U_th 显示清楚；
-5. 预留非理想电表负载效应修正：填入表内阻后自动叠加修正曲线（默认关闭）。
+1. 深蓝色散点标出实验数据点，浅蓝色实线平滑连接；
+2. 取电流随电压剧烈变化的线性段（U >= 0.680 V）做最小二乘拟合 I = a*U + b，
+   用红色虚线画出拟合线段（并以较淡的红色虚线延伸至 I = 0）；
+3. 由拟合直线的横轴截距得正向导通阈值电压 U_th1，用黑色箭头 + 标注框标出，
+   框内同时写明拟合方程；
+4. 预留非理想电表负载效应修正：填入表内阻后自动叠加修正曲线（默认关闭）。
 """
 
 from pathlib import Path
@@ -83,14 +84,14 @@ def main():
     a_alt, b_alt, u_th_alt, r2_alt, n_alt = fit_line(u, i, FIT_U_MIN_ALT, FIT_U_MAX_ALT)
 
     print("--- 普通二极管伏安特性拟合结果 ---")
-    print(f"主拟合窗口 U >= {FIT_U_MIN:.3f} V（{n_fit} 个点）")
+    print(f"拟合窗口 U >= {FIT_U_MIN:.3f} V（{n_fit} 个点）")
     print(f"拟合直线方程: I = {a:.2f} U {b:+.2f}   (mA, V)")
-    print(f"正向导通阈值电压 U_th = {u_th:.3f} V")
+    print(f"正向导通阈值电压 U_th1 = {u_th:.3f} V")
     print(f"决定系数 R² = {r2:.5f}")
     print(f"参考：窗口 {FIT_U_MIN_ALT:.3f}~{FIT_U_MAX_ALT:.3f} V（{n_alt} 个点）"
           f" -> U_th = {u_th_alt:.3f} V, R² = {r2_alt:.5f}")
 
-    # ==================== 图 1：完整伏安特性曲线 ====================
+    # ==================== 图1：正向伏安特性曲线 ====================
     fig, ax = plt.subplots(figsize=(8.5, 6))
 
     # 平滑曲线：PCHIP 单调插值，既光滑又不会在拐点附近过冲到负值
@@ -98,44 +99,48 @@ def main():
     i_smooth = PchipInterpolator(u, i)(u_smooth)
     ax.plot(u_smooth, i_smooth, color="deepskyblue", lw=1.6, zorder=2, label="平滑拟合曲线")
 
-    # 实验数据点
-    ax.scatter(u, i, color="tab:blue", s=40, zorder=5, label="实验测量数据点")
+    # 实验数据点（深蓝色散点）
+    ax.scatter(u, i, color="darkblue", s=42, zorder=5, label="实验测量数据点")
 
-    # 直线段拟合线（实线）与外推到 I=0 的部分（虚线），两段不重叠
+    # 红色虚线：直线段拟合线（实线段在数据范围内，虚线段为外推到 I = 0）
     u_fit_line = np.linspace(FIT_U_MIN, u.max(), 100)
     ax.plot(
         u_fit_line,
         a * u_fit_line + b,
         color="red",
         lw=2.0,
+        ls="--",
         zorder=4,
-        label=f"直线段拟合线: $I={a:.1f}U{b:+.1f}$",
+        label=f"最小二乘拟合线 ($U\\geq{FIT_U_MIN:.3f}$ V)",
     )
     u_extrap = np.linspace(u_th, FIT_U_MIN, 50)
     ax.plot(
         u_extrap,
         a * u_extrap + b,
         color="red",
-        lw=1.4,
+        lw=1.3,
         ls="--",
-        alpha=0.75,
+        alpha=0.6,
         zorder=4,
         label="外推至 $I=0$",
     )
 
-    # 阈值电压：竖虚线 + 高亮圆点 + 数值标在坐标轴下方，不压住任何数据点
-    ax.axvline(u_th, color="red", ls=":", lw=1.2, alpha=0.6, zorder=1)
-    ax.scatter([u_th], [0], color="red", s=60, zorder=6, marker="o")
-    ax.text(
-        u_th,
-        -0.32,
-        f"$U_{{th}}={u_th:.3f}\\,\\mathrm{{V}}$",
-        fontsize=11,
+    # 阈值电压：黑色箭头 + 标注框，框内写明 U_th1 与拟合方程
+    ax.scatter([u_th], [0], color="black", s=55, zorder=6, marker="o")
+    ax.annotate(
+        f"$U_{{th1}}={u_th:.3f}\\,\\mathrm{{V}}$\n"
+        f"拟合直线 $I={a:.1f}U{b:+.1f}$",
+        xy=(u_th, 0),
+        xytext=(0.47, 1.7),
+        textcoords="data",
+        fontsize=10.5,
         fontweight="bold",
-        color="red",
+        color="black",
         ha="center",
-        va="top",
-        bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": "red", "alpha": 0.9},
+        va="center",
+        bbox={"boxstyle": "round,pad=0.35", "fc": "white", "ec": "black", "alpha": 0.93},
+        arrowprops={"arrowstyle": "->", "color": "black", "lw": 1.3, "shrinkB": 4},
+        zorder=7,
     )
 
     # 负载效应修正曲线（填入表内阻后才画）
@@ -150,79 +155,31 @@ def main():
     ax.set_title("图1  普通二极管的正向伏安特性曲线", fontsize=14, fontweight="bold", pad=12)
     ax.set_xlabel("电压 $U$ / V", fontsize=12)
     ax.set_ylabel("电流 $I$ / mA", fontsize=12)
-    ax.set_xlim(-0.05, 0.80)
+    ax.set_xlim(-0.02, 0.78)
     ax.set_ylim(-1.0, 15)
     ax.set_xticks(np.arange(0.0, 0.81, 0.1))
     ax.grid(True, linestyle=":", alpha=0.6)
     ax.legend(loc="upper left", fontsize=10.5)
     fig.tight_layout()
-    out_main = SCRIPT_DIR / "normal_diode_iv.png"
-    fig.savefig(out_main, dpi=300, bbox_inches="tight", facecolor="white")
-    print(f"已保存: {out_main.name}")
 
-    # ==================== 图 2：直线段局部放大 ====================
-    fig2, ax2 = plt.subplots(figsize=(8, 5.5))
-    mask_fit = u >= FIT_U_MIN
-    if FIT_U_MAX is not None:
-        mask_fit &= u <= FIT_U_MAX
-
-    ax2.plot(u_smooth, i_smooth, color="deepskyblue", lw=1.8, zorder=2, label="平滑拟合曲线")
-    ax2.scatter(u, i, color="tab:blue", s=45, zorder=5, label="实验测量数据点")
-    ax2.scatter(
-        u[mask_fit],
-        i[mask_fit],
-        facecolor="none",
-        edgecolor="tab:blue",
-        s=150,
-        lw=1.6,
-        zorder=6,
-        label="用于拟合的直线段数据点",
-    )
-
-    u_line2 = np.linspace(u_th, u.max(), 100)
-    ax2.plot(u_line2, a * u_line2 + b, color="red", lw=2.0, zorder=4, label="最小二乘拟合直线")
-    ax2.axvline(u_th, color="red", ls=":", lw=1.2, alpha=0.6, zorder=1)
-    ax2.scatter([u_th], [0], color="red", s=60, zorder=6)
-    ax2.text(
-        u_th,
-        -0.32,
-        f"$U_{{th}}={u_th:.3f}\\,\\mathrm{{V}}$",
-        fontsize=11,
-        fontweight="bold",
-        color="red",
-        ha="center",
-        va="top",
-        bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": "red", "alpha": 0.9},
-    )
-
-    ax2.set_title(
-        f"图1  普通二极管正向伏安特性曲线（直线段放大，$U\\geq{FIT_U_MIN:.3f}\\,\\mathrm{{V}}$）",
-        fontsize=12.5,
-        fontweight="bold",
-        pad=12,
-    )
-    ax2.set_xlabel("电压 $U$ / V", fontsize=12)
-    ax2.set_ylabel("电流 $I$ / mA", fontsize=12)
-    ax2.set_xlim(0.60, 0.78)
-    ax2.set_ylim(-1.0, 14.5)
-    ax2.grid(True, linestyle=":", alpha=0.6)
-    ax2.legend(loc="upper left", fontsize=10.5)
-    fig2.tight_layout()
-    out_zoom = SCRIPT_DIR / "normal_diode_iv_linear_zoom.png"
-    fig2.savefig(out_zoom, dpi=300, bbox_inches="tight", facecolor="white")
-    print(f"已保存: {out_zoom.name}")
+    out = SCRIPT_DIR / "normal_diode_iv.png"
+    fig.savefig(out, dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"已保存: {out.name}")
 
     # ==================== 结果写入文本 ====================
+    lines = [
+        "普通二极管正向伏安特性\n\n",
+        f"拟合窗口 U >= {FIT_U_MIN:.3f} V（{n_fit} 个点）\n",
+        f"拟合直线 I = {a:.4f} * U {b:+.4f}  (mA, V)\n",
+        f"U_th1 = {u_th:.4f} V\n",
+        f"R2 = {r2:.6f}\n\n",
+        f"参考窗口 {FIT_U_MIN_ALT:.3f}~{FIT_U_MAX_ALT:.3f} V（{n_alt} 个点）\n",
+        f"I = {a_alt:.4f} * U {b_alt:+.4f}\n",
+        f"U_th = {u_th_alt:.4f} V\n",
+        f"R2 = {r2_alt:.6f}\n",
+    ]
     with open(RESULT_PATH, "w", encoding="utf-8") as f:
-        f.write("普通二极管正向伏安特性\n")
-        f.write(f"主拟合窗口 U >= {FIT_U_MIN:.3f} V（{n_fit} 个点）\n")
-        f.write(f"拟合直线 I = {a:.4f} * U {b:+.4f}  (mA, V)\n")
-        f.write(f"U_th = {u_th:.4f} V\n")
-        f.write(f"R2 = {r2:.6f}\n\n")
-        f.write(f"参考窗口 {FIT_U_MIN_ALT:.3f}~{FIT_U_MAX_ALT:.3f} V（{n_alt} 个点）\n")
-        f.write(f"I = {a_alt:.4f} * U {b_alt:+.4f}\n")
-        f.write(f"U_th = {u_th_alt:.4f} V\n")
-        f.write(f"R2 = {r2_alt:.6f}\n")
+        f.writelines(lines)
 
     plt.show()
 

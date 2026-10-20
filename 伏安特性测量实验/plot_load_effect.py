@@ -38,14 +38,13 @@ LOAD_LINES = [
     (4.44, 1.108, "green", "$4.44\\,\\mathrm{V}$ 换档后直线"),
 ]
 
-# 三个关键工作点：(U, I, 颜色, 标注文字, 子图内文本框位置)
-# 工作点0 = 换档前的工作点，15 V 与 4.44 V 两种电压必须用同一个点（老师 PPT 要求）。
-# u1 = 0.623 V 与 i1 = 1.901 mA 互为自洽：R = (15.00-0.623)/1.901 = 7563 Ω，
-# R-900 = 6663 Ω；4.44 V 时 R = (4.44-0.623)/1.901 = 2008 Ω，R-900 = 1108 Ω。
+# 三个关键工作点：(U, I, 颜色, 标注文字, 子图内文本框位置, 所属负载线的 VCC)
+# 工作点0 = 换档前的工作点，15 V 与 4.44 V 两种电压必须用同一个点（老师 PPT 要求），
+# 它落在伏安特性曲线上，不在任何一条负载线上，故所属负载线记为 None。
 WORK_POINTS = [
-    (0.623, 1.901, "black", "工作点0\n1.901mA\n0.623V", (0.578, 1.45)),
-    (0.630, 2.13, "red", "15.00V\n换档后\n2.13mA\n0.630V", (0.585, 2.60)),
-    (0.655, 3.33, "green", "4.44V\n换档后\n3.33mA\n0.655V", (0.615, 3.62)),
+    (0.622, 1.901, "black", "工作点0\n1.901mA\n0.622V", (0.578, 1.45), None),
+    (0.630, 2.13, "red", "15.00V\n换档后\n2.13mA\n0.630V", (0.585, 2.60), 15.00),
+    (0.655, 3.33, "green", "4.44V\n换档后\n3.33mA\n0.655V", (0.615, 3.62), 4.44),
 ]
 
 # 全景图 / 放大子图的显示区间
@@ -57,8 +56,8 @@ Y_LIM_INSET = (0.0, 4.0)
 # 放大子图在主图坐标系中的位置（主图 axes 比例）
 INSET_BOX = [0.44, 0.40, 0.53, 0.55]
 
-# 全景图上标出"待放大"区域的方框（主图数据坐标）
-ZOOM_MARK = (0.30, 0.90, 0.0, 4.3)
+# 全景图上标出"待放大"区域的方框（主图数据坐标：x0, y0, x1, y1）
+ZOOM_MARK = (0.58, 0.0, 0.70, 4.3)
 
 
 def read_data(path):
@@ -146,6 +145,19 @@ def draw_main_panel(ax, u, i, u_smooth, i_smooth):
         )
     )
 
+    # 右下角说明（放在子图下方的主图空白区，避开红线与子图）
+    ax.text(
+        14.9,
+        2.6,
+        "换档后的计算值 $(u',\\ i')$\n图解法求交点",
+        fontsize=11,
+        ha="right",
+        va="bottom",
+        color="0.25",
+        linespacing=1.7,
+        zorder=6,
+    )
+
     ax.set_xlim(*X_LIM_MAIN)
     ax.set_ylim(*Y_LIM_MAIN)
     ax.set_xticks(np.arange(0, 16, 1))
@@ -160,7 +172,7 @@ def draw_inset_panel(ax, u, i, u_smooth, i_smooth):
     ax.plot(u_smooth, i_smooth, color="black", lw=1.4, zorder=3)
     ax.scatter(u, i, color="black", s=28, zorder=4)
 
-    for u_pt, i_pt, color, text, (tx, ty) in WORK_POINTS:
+    for u_pt, i_pt, color, text, (tx, ty), _vcc in WORK_POINTS:
         # 水平虚线：从坐标轴左边缘拉到工作点
         ax.plot(
             [X_LIM_INSET[0], u_pt],
@@ -207,17 +219,6 @@ def draw_inset_panel(ax, u, i, u_smooth, i_smooth):
             zorder=7,
         )
 
-    ax.text(
-        0.695,
-        0.12,
-        "换档后的计算值 $(u',\\ i')$\n图解法求交点",
-        fontsize=9,
-        ha="right",
-        va="bottom",
-        color="0.25",
-        linespacing=1.6,
-    )
-
     ax.set_xlim(*X_LIM_INSET)
     ax.set_ylim(*Y_LIM_INSET)
     ax.set_xticks([0.4, 0.5, 0.6, 0.7])
@@ -246,26 +247,35 @@ def main():
         print(f"{vcc:>6.2f} V 负载线与伏安特性曲线的交点: {desc}")
         print(f"        i 轴交点 (0 V, {vcc / resistance:.6f} mA)")
 
-    print("\n--- 三个标注工作点与负载线的一致性核验 ---")
+    print("\n--- 三个标注工作点的一致性核验 ---")
     warnings = []
-    for u_pt, i_pt, _color, text, *_ in WORK_POINTS:
+    for u_pt, i_pt, _color, text, _pos, owner_vcc in WORK_POINTS:
         curve_val = float(i_curve(u_pt))
         row = [
             f"{text.splitlines()[0]:<16s} 标注 ({u_pt:.3f} V, {i_pt:.3f} mA) | "
             f"曲线值 {curve_val:.3f} mA"
         ]
-        for vcc, resistance, *_ in LOAD_LINES:
-            line_val = float(load_line_current(vcc, resistance, np.array([u_pt]))[0])
-            row.append(f"{vcc:.2f}V 线 {line_val:.3f} mA")
+        # 工作点0 在曲线上（换档前），两个换档后交点分别落在各自的负载线上
+        if owner_vcc is None:
+            if abs(curve_val - i_pt) > 0.05:
+                warnings.append(
+                    f"  ! {text.splitlines()[0]}: 标注 I={i_pt:.3f} mA 与该处曲线值 "
+                    f"{curve_val:.3f} mA 相差 {abs(curve_val - i_pt):.3f} mA"
+                )
+            row.append("换档前工作点（应在伏安特性曲线上）")
+        else:
+            resistance = dict((v, r) for v, r, *_ in LOAD_LINES)[owner_vcc]
+            line_val = float(load_line_current(owner_vcc, resistance, np.array([u_pt]))[0])
+            row.append(f"{owner_vcc:.2f}V 线 {line_val:.3f} mA")
             if abs(line_val - i_pt) > 0.05:
                 warnings.append(
                     f"  ! {text.splitlines()[0]}: 标注 I={i_pt:.3f} mA 与 "
-                    f"{vcc:.2f}V 负载线在该处的 {line_val:.3f} mA 相差 "
+                    f"{owner_vcc:.2f}V 负载线在该处的 {line_val:.3f} mA 相差 "
                     f"{abs(line_val - i_pt):.3f} mA"
                 )
         print(" | ".join(row))
     if warnings:
-        print("\n提示（标注值与负载线存在偏差，请确认取点方式）：")
+        print("\n提示（标注值与对应曲线的偏差超过 0.05 mA，图解法读数允许此量级误差）：")
         for w in warnings:
             print(w)
 
@@ -287,7 +297,7 @@ def main():
     ax.annotate(
         "",
         xy=(arrow_to[0] - 0.4, arrow_to[1] - 0.4),
-        xytext=(1.45, 3.9),
+        xytext=(1.05, 3.9),
         arrowprops={
             "arrowstyle": "-|>",
             "color": "royalblue",
@@ -299,7 +309,7 @@ def main():
         zorder=7,
     )
     ax.text(
-        3.6, 5.0, "放大后", color="royalblue", fontsize=14, fontweight="bold",
+        3.3, 4.85, "放大后", color="royalblue", fontsize=14, fontweight="bold",
         ha="center", va="center", zorder=7,
         bbox={"boxstyle": "square,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.85},
     )
@@ -328,13 +338,18 @@ def main():
         for uu, ii in hits:
             lines.append(f"  {vcc:.2f}V 线: U = {uu:.4f} V, I = {ii:.4f} mA\n")
     lines.append("\n关键工作点：\n")
-    for u_pt, i_pt, _color, text, *_ in WORK_POINTS:
+    resistance_of = {v: r for v, r, *_ in LOAD_LINES}
+    for u_pt, i_pt, _color, text, _pos, owner_vcc in WORK_POINTS:
         lines.append(f"  {text.splitlines()[0]}: U = {u_pt:.3f} V, I = {i_pt:.3f} mA\n")
         lines.append(f"    该处伏安特性曲线电流 = {float(i_curve(u_pt)):.4f} mA\n")
-        for vcc, resistance, *_ in LOAD_LINES:
-            val = float(load_line_current(vcc, resistance, np.array([u_pt]))[0])
+        if owner_vcc is None:
+            lines.append("    换档前工作点（不在负载线上）\n")
+        else:
+            val = float(
+                load_line_current(owner_vcc, resistance_of[owner_vcc], np.array([u_pt]))[0]
+            )
             lines.append(
-                f"    {vcc:.2f}V 负载线电流 = {val:.4f} mA（差 {val - i_pt:+.4f} mA）\n"
+                f"    {owner_vcc:.2f}V 负载线电流 = {val:.4f} mA（差 {val - i_pt:+.4f} mA）\n"
             )
     with open(RESULT_PATH, "w", encoding="utf-8") as f:
         f.writelines(lines)
